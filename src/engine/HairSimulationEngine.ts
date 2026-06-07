@@ -26,8 +26,8 @@ import {
   LensRenderingPipeline,
 } from '@babylonjs/core';
 import '@babylonjs/post-processes';
-import type { HairState, HairParams, CombConfig, SimulationFrame } from '@/shared/types';
-import { PHYSICS_CONSTANTS } from '@/shared/constants';
+import type { HairState, HairParams, CombConfig, SimulationFrame, CustomCombParams, ToothTipShape } from '@/shared/types';
+import { PHYSICS_CONSTANTS, MATERIAL_PROPERTIES } from '@/shared/constants';
 import {
   createHairState,
   updateHairPhysics,
@@ -250,6 +250,14 @@ export class HairSimulationEngine {
   }
 
   private createComb(): void {
+    if (this.combConfig.type === 'custom' && this.combConfig.customParams) {
+      this.createCustomComb(this.combConfig.customParams);
+    } else {
+      this.createDefaultComb();
+    }
+  }
+
+  private createDefaultComb(): void {
     const combGroup = MeshBuilder.CreateBox(
       'combHandle',
       { width: 0.1, height: 0.02, depth: 0.2 },
@@ -289,6 +297,185 @@ export class HairSimulationEngine {
     this.combMesh = combGroup;
     this.combMesh.position = new Vector3(0, 0.5, 0);
     this.combMesh.setEnabled(false);
+  }
+
+  private createCustomComb(params: CustomCombParams): void {
+    const combGroup = new Mesh('customComb', this.scene);
+
+    const handleWidth = params.handleWidth / 1000;
+    const handleThickness = params.handleThickness / 1000;
+    const handleLength = params.handleLength / 1000;
+    const baseWidth = params.baseWidth / 1000;
+    const toothLength = params.toothLength / 1000;
+    const toothDiameter = params.toothDiameter / 1000;
+    const toothSpacing = params.toothSpacing / 1000;
+    const toothTaper = params.toothTaper;
+
+    const handle = MeshBuilder.CreateBox(
+      'combHandle',
+      {
+        width: handleWidth,
+        height: handleThickness,
+        depth: handleLength,
+      },
+      this.scene
+    );
+    handle.parent = combGroup;
+    handle.position = new Vector3(0, handleThickness / 2, handleLength / 2 - baseWidth / 2);
+
+    const base = MeshBuilder.CreateBox(
+      'combBase',
+      {
+        width: baseWidth,
+        height: handleThickness,
+        depth: baseWidth * 0.6,
+      },
+      this.scene
+    );
+    base.parent = combGroup;
+    base.position = new Vector3(0, handleThickness / 2, -baseWidth * 0.1);
+
+    const toothBaseDiameter = toothDiameter;
+    const toothTipDiameter = toothDiameter * (1 - toothTaper);
+
+    for (let i = 0; i < params.toothCount; i++) {
+      const tooth = this.createTooth(
+        `tooth${i}`,
+        toothLength,
+        toothBaseDiameter,
+        toothTipDiameter,
+        params.toothTipShape
+      );
+      tooth.parent = combGroup;
+      tooth.position = new Vector3(
+        (i - (params.toothCount - 1) / 2) * toothSpacing,
+        -toothLength / 2,
+        0
+      );
+      tooth.rotation.x = Math.PI / 2;
+    }
+
+    const materialProps = MATERIAL_PROPERTIES[params.materialType];
+    const effectiveStiffness = params.stiffness * materialProps.stiffnessModifier;
+    this.combConfig.stiffness = effectiveStiffness;
+
+    const combMaterial = new PBRMaterial('customCombMaterial', this.scene);
+    combMaterial.albedoColor = new Color3(
+      materialProps.color[0],
+      materialProps.color[1],
+      materialProps.color[2]
+    );
+    combMaterial.metallic = materialProps.metallic;
+    combMaterial.roughness = materialProps.roughness;
+
+    combGroup.material = combMaterial;
+    combGroup.getChildMeshes().forEach((child) => {
+      child.material = combMaterial;
+    });
+
+    this.combMesh = combGroup;
+    this.combMesh.position = new Vector3(0, 0.5, 0);
+    this.combMesh.setEnabled(false);
+  }
+
+  private createTooth(
+    name: string,
+    length: number,
+    baseDiameter: number,
+    tipDiameter: number,
+    tipShape: ToothTipShape
+  ): Mesh {
+    const toothGroup = new Mesh(name, this.scene);
+
+    const shaft = MeshBuilder.CreateCylinder(
+      `${name}_shaft`,
+      {
+        height: length * 0.85,
+        diameterTop: tipDiameter,
+        diameterBottom: baseDiameter,
+        tessellation: 8,
+      },
+      this.scene
+    );
+    shaft.parent = toothGroup;
+    shaft.position = new Vector3(0, length * 0.075, 0);
+
+    const tipLength = length * 0.15;
+    let tip: Mesh;
+
+    switch (tipShape) {
+      case 'pointed':
+        tip = MeshBuilder.CreateCylinder(
+          `${name}_tip`,
+          {
+            height: tipLength,
+            diameterTop: 0,
+            diameterBottom: tipDiameter,
+            tessellation: 8,
+          },
+          this.scene
+        );
+        tip.parent = toothGroup;
+        tip.position = new Vector3(0, length * 0.85 + tipLength / 2, 0);
+        break;
+
+      case 'spherical':
+        tip = MeshBuilder.CreateSphere(
+          `${name}_tip`,
+          {
+            diameter: tipDiameter * 1.2,
+            segments: 8,
+          },
+          this.scene
+        );
+        tip.parent = toothGroup;
+        tip.position = new Vector3(0, length * 0.85 + tipDiameter * 0.3, 0);
+        break;
+
+      case 'round':
+      default: {
+        tip = MeshBuilder.CreateCylinder(
+          `${name}_tip`,
+          {
+            height: tipLength * 0.6,
+            diameterTop: tipDiameter * 0.9,
+            diameterBottom: tipDiameter,
+            tessellation: 8,
+          },
+          this.scene
+        );
+        tip.parent = toothGroup;
+        tip.position = new Vector3(0, length * 0.85 + tipLength * 0.3, 0);
+
+        const cap = MeshBuilder.CreateSphere(
+          `${name}_cap`,
+          {
+            diameter: tipDiameter,
+            segments: 6,
+          },
+          this.scene
+        );
+        cap.parent = toothGroup;
+        cap.position = new Vector3(0, length * 0.85 + tipLength * 0.6, 0);
+        cap.scaling = new Vector3(1, 0.5, 1);
+        break;
+      }
+    }
+
+    return toothGroup;
+  }
+
+  private updateCustomComb(params: CustomCombParams): void {
+    if (this.combMesh) {
+      const wasEnabled = this.combMesh.isEnabled();
+      const oldPosition = this.combMesh.position.clone();
+      this.combMesh.dispose();
+      this.createCustomComb(params);
+      if (this.combMesh) {
+        this.combMesh.position.copyFrom(oldPosition);
+        this.combMesh.setEnabled(wasEnabled);
+      }
+    }
   }
 
   private createParticleSystems(): void {
@@ -806,11 +993,42 @@ export class HairSimulationEngine {
     this.rebuildHair();
   }
 
+  private customCombUpdateTimeout: number | null = null;
+  private lastCustomCombParams: CustomCombParams | null = null;
+
   public setCombConfig(config: CombConfig): void {
     this.combConfig = config;
-    if (this.combMesh) {
-      this.combMesh.dispose();
-      this.createComb();
+
+    if (config.type === 'custom' && config.customParams) {
+      this.scheduleCustomCombUpdate(config.customParams);
+    } else {
+      if (this.customCombUpdateTimeout) {
+        window.clearTimeout(this.customCombUpdateTimeout);
+        this.customCombUpdateTimeout = null;
+      }
+      if (this.combMesh) {
+        this.combMesh.dispose();
+        this.createComb();
+      }
+    }
+  }
+
+  private scheduleCustomCombUpdate(params: CustomCombParams): void {
+    this.lastCustomCombParams = params;
+
+    if (this.customCombUpdateTimeout) {
+      window.clearTimeout(this.customCombUpdateTimeout);
+    }
+
+    this.customCombUpdateTimeout = window.setTimeout(() => {
+      this.performCustomCombUpdate();
+      this.customCombUpdateTimeout = null;
+    }, 16);
+  }
+
+  private performCustomCombUpdate(): void {
+    if (this.lastCustomCombParams) {
+      this.updateCustomComb(this.lastCustomCombParams);
     }
   }
 

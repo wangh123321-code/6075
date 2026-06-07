@@ -12,6 +12,8 @@ import type {
   PerformanceMetrics,
   PlaybackState,
   SimulationFrame,
+  CustomCombParams,
+  CombPreset,
 } from '@/shared/types';
 import {
   DEFAULT_HAIR_PARAMS,
@@ -21,6 +23,7 @@ import {
   CAT_BREED_PRESETS,
   SIMULATION_CONSTANTS,
   PHYSICS_CONSTANTS,
+  DEFAULT_CUSTOM_COMB_PARAMS,
 } from '@/shared/constants';
 
 interface SimulationState {
@@ -35,6 +38,17 @@ interface SimulationState {
   combType: CombType;
   combConfig: CombConfig;
   setCombType: (type: CombType) => void;
+
+  customCombParams: CustomCombParams;
+  setCustomCombParams: (params: Partial<CustomCombParams>) => void;
+  resetCustomCombParams: () => void;
+
+  combPresets: CombPreset[];
+  saveCombPreset: (name: string, description: string) => Promise<boolean>;
+  loadCombPreset: (presetId: string) => void;
+  deleteCombPreset: (presetId: string) => void;
+  loadCombPresets: () => void;
+  generateCombThumbnail: () => Promise<string>;
 
   environmentParams: EnvironmentParams;
   setEnvironmentParams: (params: Partial<EnvironmentParams>) => void;
@@ -118,10 +132,145 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   combType: 'needle',
   combConfig: { ...COMB_CONFIGS.needle },
   setCombType: (type) =>
-    set({
-      combType: type,
-      combConfig: { ...COMB_CONFIGS[type] },
+    set((state) => {
+      if (type === 'custom') {
+        return {
+          combType: type,
+          combConfig: {
+            type: 'custom',
+            toothSpacing: state.customCombParams.toothSpacing,
+            toothLength: state.customCombParams.toothLength,
+            stiffness: state.customCombParams.stiffness,
+            customParams: { ...state.customCombParams },
+          },
+        };
+      }
+      return {
+        combType: type,
+        combConfig: { ...COMB_CONFIGS[type] },
+      };
     }),
+
+  customCombParams: { ...DEFAULT_CUSTOM_COMB_PARAMS },
+  setCustomCombParams: (params) =>
+    set((state) => {
+      const newParams = { ...state.customCombParams, ...params };
+      const newCombConfig =
+        state.combType === 'custom'
+          ? {
+              type: 'custom' as const,
+              toothSpacing: newParams.toothSpacing,
+              toothLength: newParams.toothLength,
+              stiffness: newParams.stiffness,
+              customParams: newParams,
+            }
+          : state.combConfig;
+      return {
+        customCombParams: newParams,
+        combConfig: newCombConfig,
+      };
+    }),
+  resetCustomCombParams: () =>
+    set((state) => {
+      const newParams = { ...DEFAULT_CUSTOM_COMB_PARAMS };
+      const newCombConfig =
+        state.combType === 'custom'
+          ? {
+              type: 'custom' as const,
+              toothSpacing: newParams.toothSpacing,
+              toothLength: newParams.toothLength,
+              stiffness: newParams.stiffness,
+              customParams: newParams,
+            }
+          : state.combConfig;
+      return {
+        customCombParams: newParams,
+        combConfig: newCombConfig,
+      };
+    }),
+
+  combPresets: [],
+  loadCombPresets: () => {
+    try {
+      const stored = localStorage.getItem('combPresets');
+      if (stored) {
+        const presets = JSON.parse(stored);
+        set({ combPresets: presets });
+      }
+    } catch (error) {
+      console.error('Failed to load comb presets:', error);
+    }
+  },
+  saveCombPreset: async (name, description) => {
+    try {
+      const state = get();
+      const thumbnail = await state.generateCombThumbnail();
+      const newPreset: CombPreset = {
+        id: `preset_${Date.now()}`,
+        name,
+        description,
+        params: { ...state.customCombParams },
+        thumbnail,
+        createdAt: Date.now(),
+      };
+
+      const newPresets = [...state.combPresets, newPreset];
+      localStorage.setItem('combPresets', JSON.stringify(newPresets));
+      set({ combPresets: newPresets });
+      return true;
+    } catch (error) {
+      console.error('Failed to save comb preset:', error);
+      return false;
+    }
+  },
+  loadCombPreset: (presetId) => {
+    set((state) => {
+      const preset = state.combPresets.find((p) => p.id === presetId);
+      if (!preset) return state;
+
+      return {
+        customCombParams: { ...preset.params },
+        combType: 'custom',
+        combConfig: {
+          type: 'custom',
+          toothSpacing: preset.params.toothSpacing,
+          toothLength: preset.params.toothLength,
+          stiffness: preset.params.stiffness,
+          customParams: { ...preset.params },
+        },
+      };
+    });
+  },
+  deleteCombPreset: (presetId) => {
+    set((state) => {
+      const newPresets = state.combPresets.filter((p) => p.id !== presetId);
+      localStorage.setItem('combPresets', JSON.stringify(newPresets));
+      return { combPresets: newPresets };
+    });
+  },
+
+  generateCombThumbnail: async (): Promise<string> => {
+    const state = get();
+    const params = state.customCombParams;
+    const paramsStr = JSON.stringify(params);
+    const hash = btoa(paramsStr).slice(0, 20);
+
+    const shapeMap: Record<string, string> = {
+      round: 'rounded',
+      pointed: 'pointed',
+      spherical: 'ball',
+    };
+    const materialMap: Record<string, string> = {
+      plastic: 'plastic',
+      metal: 'metallic',
+      wood: 'wooden',
+      silicone: 'silicone',
+    };
+
+    const prompt = `A ${materialMap[params.materialType]} hair comb with ${params.toothCount} teeth, ${shapeMap[params.toothTipShape]} tips, professional product photography, white background, studio lighting, 3D render`;
+
+    return `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=${encodeURIComponent(prompt)}&image_size=square_hd&t=${hash}`;
+  },
 
   environmentParams: { ...DEFAULT_ENVIRONMENT },
   setEnvironmentParams: (params) =>

@@ -1,4 +1,4 @@
-import type { CatBreedPreset, CombConfig, CombType, EnvironmentParams, HairParams, RenderSettings } from './types';
+import type { CatBreedPreset, CombConfig, CombType, CustomCombParams, EnvironmentParams, HairParams, MaterialType, RenderSettings, ToothTipShape } from './types';
 
 export const DEFAULT_HAIR_PARAMS: HairParams = {
   length: 0.5,
@@ -6,6 +6,61 @@ export const DEFAULT_HAIR_PARAMS: HairParams = {
   stiffness: 0.5,
   curliness: 0.3,
   color: '#8B4513',
+};
+
+export const DEFAULT_CUSTOM_COMB_PARAMS: CustomCombParams = {
+  toothCount: 12,
+  toothSpacing: 2.5,
+  toothLength: 15,
+  toothDiameter: 0.8,
+  handleLength: 120,
+  handleWidth: 20,
+  handleThickness: 8,
+  toothTipShape: 'round',
+  materialType: 'metal',
+  stiffness: 0.8,
+  baseWidth: 60,
+  toothTaper: 0.3,
+};
+
+export const MATERIAL_PROPERTIES: Record<MaterialType, { color: [number, number, number]; metallic: number; roughness: number; stiffnessModifier: number }> = {
+  plastic: {
+    color: [0.3, 0.3, 0.35],
+    metallic: 0.1,
+    roughness: 0.6,
+    stiffnessModifier: 0.7,
+  },
+  metal: {
+    color: [0.7, 0.7, 0.75],
+    metallic: 0.9,
+    roughness: 0.2,
+    stiffnessModifier: 1.0,
+  },
+  wood: {
+    color: [0.55, 0.35, 0.2],
+    metallic: 0.0,
+    roughness: 0.8,
+    stiffnessModifier: 0.6,
+  },
+  silicone: {
+    color: [0.9, 0.3, 0.3],
+    metallic: 0.0,
+    roughness: 0.9,
+    stiffnessModifier: 0.3,
+  },
+};
+
+export const TOOTH_TIP_SHAPE_NAMES: Record<ToothTipShape, string> = {
+  round: '圆形',
+  pointed: '尖形',
+  spherical: '球形',
+};
+
+export const MATERIAL_TYPE_NAMES: Record<MaterialType, string> = {
+  plastic: '塑料',
+  metal: '金属',
+  wood: '木质',
+  silicone: '硅胶',
 };
 
 export const CAT_BREED_PRESETS: CatBreedPreset[] = [
@@ -89,7 +144,7 @@ export const CAT_BREED_PRESETS: CatBreedPreset[] = [
   },
 ];
 
-export const COMB_CONFIGS: Record<CombType, CombConfig> = {
+export const COMB_CONFIGS: Partial<Record<CombType, CombConfig>> & { needle: CombConfig; shedding: CombConfig; detangling: CombConfig } = {
   needle: {
     type: 'needle',
     toothSpacing: 2.5,
@@ -110,10 +165,11 @@ export const COMB_CONFIGS: Record<CombType, CombConfig> = {
   },
 };
 
-export const COMB_NAMES: Record<CombType, string> = {
+export const COMB_NAMES: Partial<Record<CombType, string>> & { needle: string; shedding: string; detangling: string } = {
   needle: '针梳',
   shedding: '脱毛梳',
   detangling: '排梳',
+  custom: '自定义',
 };
 
 export const DEFAULT_ENVIRONMENT: EnvironmentParams = {

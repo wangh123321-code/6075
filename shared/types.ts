@@ -14,13 +14,42 @@ export interface CatBreedPreset {
   imageUrl: string;
 }
 
-export type CombType = 'needle' | 'shedding' | 'detangling';
+export type CombType = 'needle' | 'shedding' | 'detangling' | 'custom';
+
+export type ToothTipShape = 'round' | 'pointed' | 'spherical';
+
+export type MaterialType = 'plastic' | 'metal' | 'wood' | 'silicone';
+
+export interface CustomCombParams {
+  toothCount: number;
+  toothSpacing: number;
+  toothLength: number;
+  toothDiameter: number;
+  handleLength: number;
+  handleWidth: number;
+  handleThickness: number;
+  toothTipShape: ToothTipShape;
+  materialType: MaterialType;
+  stiffness: number;
+  baseWidth: number;
+  toothTaper: number;
+}
+
+export interface CombPreset {
+  id: string;
+  name: string;
+  description: string;
+  params: CustomCombParams;
+  thumbnail: string;
+  createdAt: number;
+}
 
 export interface CombConfig {
   type: CombType;
   toothSpacing: number;
   toothLength: number;
   stiffness: number;
+  customParams?: CustomCombParams;
 }
 
 export interface ForceDataPoint {
