@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model CatBreed {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  hairParams  String
+  createdAt   DateTime @default(now())
+  experiments Experiment[]
+}
+
+model Experiment {
+  id                 String              @id @default(uuid())
+  name               String
+  combType           String
+  catBreedId         String?
+  catBreed           CatBreed?           @relation(fields: [catBreedId], references: [id])
+  hairParams         String
+  environmentParams  String
+  recordedFrames     String?
+  summary            String?
+  forceData          ForceDataPoint[]
+  createdAt          DateTime            @default(now())
+}
+
+model ForceDataPoint {
+  id           BigInt     @id @default(autoincrement())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id])
+  timestamp    Float
+  position     String
+  force        Float
+  hairId       Int
+  stressLevel  Float
+}
