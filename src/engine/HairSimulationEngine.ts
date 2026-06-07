@@ -353,15 +353,6 @@ export class HairSimulationEngine {
       this.scene
     );
 
-    if (this.instanceRendering) {
-      this.hairInstances = new InstancedMesh(
-        'hairInstances',
-        hairTemplate
-      );
-    }
-
-    hairTemplate.setEnabled(false);
-
     const hairMaterial = new PBRMaterial('hairMaterial', this.scene);
     const color = this.hexToColor3(this.hairParams.color);
     hairMaterial.albedoColor = color;
@@ -370,11 +361,32 @@ export class HairSimulationEngine {
     hairMaterial.specularIntensity = 0.3;
     hairMaterial.backFaceCulling = false;
 
-    if (this.hairInstances) {
-      this.hairInstances.material = hairMaterial;
-    } else {
-      hairTemplate.material = hairMaterial;
+    hairTemplate.material = hairMaterial;
+
+    if (this.instanceRendering) {
+      this.hairInstances = new InstancedMesh(
+        'hairInstances',
+        hairTemplate
+      );
+
+      this.hairInstances.alwaysSelectAsActiveMesh = true;
+
+      const inst = this.hairInstances as any;
+      inst._matrices = new Array(actualCount);
+      inst._instanceDataStorage = {
+        instancesData: new Float32Array(actualCount * 16),
+        visibleInstances: new Uint8Array(actualCount),
+      };
+      inst._mustReturn = false;
+
+      for (let i = 0; i < actualCount; i++) {
+        inst._matrices[i] = Matrix.Identity();
+        inst._matrices[i].copyToArray(inst._instanceDataStorage.instancesData, i * 16);
+        inst._instanceDataStorage.visibleInstances[i] = 1;
+      }
     }
+
+    hairTemplate.setEnabled(false);
 
     this.generateHairStates(actualCount);
     this.updateHairInstancePositions();
@@ -445,11 +457,19 @@ export class HairSimulationEngine {
     const scaleVector = new Vector3(1, 1, 1);
     const rotation = new Quaternion();
     const position = new Vector3();
+    const inst = this.hairInstances as any;
+
+    if (!inst._matrices) {
+      inst._matrices = new Array(this.hairStates.length);
+    }
 
     for (let i = 0; i < this.hairStates.length; i++) {
       const hair = this.hairStates[i];
 
       if (hair.isShedding) {
+        if (inst._matrices[i]) {
+          inst._matrices[i].m[13] = -1000;
+        }
         continue;
       }
 
@@ -471,19 +491,36 @@ export class HairSimulationEngine {
       scaleVector.set(1, length / (0.01 + this.hairParams.length * 0.09), 1);
 
       Matrix.ComposeToRef(scaleVector, rotation, position, matrix);
-      (this.hairInstances! as any)._matrices[i] = matrix;
-
-      if (this.showHeatmap) {
-        const forceData = this.hairForces.get(i);
-        const force = forceData ? forceData.forceMagnitude : 0;
-        const color = getForceColor(force);
-        const color3 = new Color3(color[0] / 255, color[1] / 255, color[2] / 255);
-        (this.hairInstances!.material as PBRMaterial).albedoColor = color3;
-      }
+      inst._matrices[i] = matrix.clone();
     }
 
     if (this.showHeatmap) {
+      const avgForce = Array.from(this.hairForces.values()).reduce((sum, f) => sum + f.forceMagnitude, 0) / Math.max(1, this.hairForces.size);
+      const color = getForceColor(avgForce);
+      const color3 = new Color3(color[0] / 255, color[1] / 255, color[2] / 255);
+      (this.hairInstances!.material as PBRMaterial).albedoColor = color3;
       this.hairInstances.hasVertexAlpha = false;
+    } else {
+      const color = this.hexToColor3(this.hairParams.color);
+      (this.hairInstances!.material as PBRMaterial).albedoColor = color;
+    }
+
+    if (inst._matrices && this.hairInstances) {
+      const instAny = this.hairInstances as any;
+
+      if (instAny._instanceDataStorage) {
+        const data = instAny._instanceDataStorage.instancesData;
+        const count = Math.min(inst._matrices.length, this.hairStates.length);
+
+        for (let i = 0; i < count; i++) {
+          const matrix = inst._matrices[i];
+          if (matrix) {
+            matrix.copyToArray(data, i * 16);
+          }
+        }
+      }
+
+      this.hairInstances.refreshBoundingInfo();
     }
   }
 

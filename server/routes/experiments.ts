@@ -1,6 +1,7 @@
 import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import type { ExperimentRecord, ForceDataPoint } from '../../shared/types';
+import { runStressTest } from '../stress-test';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -153,32 +154,9 @@ router.post('/stress-test', async (req, res) => {
   try {
     const { iterations = 1000, hairCount = 100000 } = req.body;
 
-    const fpsData: number[] = [];
-    const frameTimeData: number[] = [];
+    const result = await runStressTest(iterations, hairCount);
 
-    for (let i = 0; i < iterations; i++) {
-      const simulatedFps = 55 + Math.random() * 20;
-      const simulatedFrameTime = 1000 / simulatedFps;
-
-      fpsData.push(simulatedFps);
-      frameTimeData.push(simulatedFrameTime);
-    }
-
-    const avgFps = fpsData.reduce((a, b) => a + b, 0) / fpsData.length;
-    const minFps = Math.min(...fpsData);
-    const maxFps = Math.max(...fpsData);
-    const avgFrameTime = frameTimeData.reduce((a, b) => a + b, 0) / frameTimeData.length;
-
-    res.json({
-      iterations,
-      hairCount,
-      avgFps,
-      minFps,
-      maxFps,
-      avgFrameTime,
-      passed: avgFps >= 60,
-      timestamp: new Date().toISOString(),
-    });
+    res.json(result);
   } catch (error) {
     console.error('Error running stress test:', error);
     res.status(500).json({ error: '压测失败' });
